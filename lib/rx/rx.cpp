@@ -79,7 +79,6 @@ void RxReceiver::rx_read_pulse(uint8_t channel, uint8_t *direct, uint16_t *val)
          *val = RECEIVER_PWM_NEUTRAL;
        }
     }
-    //if (ulValue < RECEIVER_PWM_NEUTRAL)
     else
     {
        if ((RECEIVER_PWM_NEUTRAL - ulValue) > RECEIVER_ERROR_RATE)
@@ -93,56 +92,58 @@ void RxReceiver::rx_read_pulse(uint8_t channel, uint8_t *direct, uint16_t *val)
          *val = RECEIVER_PWM_NEUTRAL;
        }
     }
-
-    // Uncomment when using normal without failed event detection (upper bound)
-//    if (ulValue > RECEIVER_PWM_MAX)
-//    {
-//      *direct = RECEIVER_STICK_INCREASING;
-//      *val = RECEIVER_PWM_MAX;
-//    }
-
     // Adding this code to detect failed event (loss or out of range signal)
-    if ((ulValue - RECEIVER_PWM_MAX) > RECEIVER_ERROR_RATE)
+    if (ulValue > RECEIVER_PWM_MAX)
     {
-      *direct = RECEIVER_STICK_LOSS_OR_FAIL;
-      *val = RECEIVER_PWM_LOSS_OR_FAIL;
+        if ((ulValue - RECEIVER_PWM_MAX) > RECEIVER_ERROR_RATE)
+        {
+            *direct = RECEIVER_STICK_LOSS_OR_FAIL;
+            *val = RECEIVER_PWM_LOSS_OR_FAIL;
+        }
+        else 
+        {
+            *direct = RECEIVER_STICK_INCREASING;
+            *val = RECEIVER_PWM_MAX;
+        }
     }
-    else
+    else 
     {
-      if ((RECEIVER_PWM_MAX - ulValue) <= RECEIVER_ERROR_RATE)
-      {
-        *direct = RECEIVER_STICK_INCREASING;
-        *val = RECEIVER_PWM_MAX;
-      }
+        if ((RECEIVER_PWM_MAX - ulValue) > RECEIVER_ERROR_RATE)
+        {
+            *direct = RECEIVER_STICK_INCREASING;
+            //*val = ulValue;
+        }
+        else 
+        {
+            *direct = RECEIVER_STICK_INCREASING;
+            *val = RECEIVER_PWM_MAX;
+        }
     }
-//    else 
-//    {
-//      if ((RECEIVER_PWM_MAX - ulValue) <= RECEIVER_ERROR_RATE)
-//      {
-//        *direct = RECEIVER_STICK_INCREASING;
-//        *val = RECEIVER_PWM_MAX;
-//      }
-//    }
 
-    // Uncomment when using normal without failed event detection (lower bound)
-//    if (ulValue <= RECEIVER_PWM_MIN)
-//    {
-//      *direct = RECEIVER_STICK_DECREASING;
-//      *val = RECEIVER_PWM_MIN;
-//    }
-    
-    // Adding this code to detect failed event (loss or out of range signal)
-    if ((RECEIVER_PWM_MIN - ulValue) > RECEIVER_ERROR_RATE)
+    if (ulValue < RECEIVER_PWM_MIN)
     {
-      *direct = RECEIVER_STICK_LOSS_OR_FAIL;
-      *val = RECEIVER_PWM_LOSS_OR_FAIL;
+        if ((RECEIVER_PWM_MIN - ulValue) > RECEIVER_ERROR_RATE)
+        {
+            *direct = RECEIVER_STICK_LOSS_OR_FAIL;
+            *val = RECEIVER_PWM_LOSS_OR_FAIL;
+        }
+        else 
+        {
+            *direct = RECEIVER_STICK_DECREASING;
+            *val = RECEIVER_PWM_MIN;
+        }
     }
-    else
+    else 
     {
-      if ((ulValue - RECEIVER_PWM_MIN) <= RECEIVER_ERROR_RATE)
-      {
-        *direct = RECEIVER_STICK_DECREASING;
-        *val = RECEIVER_PWM_MIN;
-      }
+        if ((ulValue - RECEIVER_PWM_MIN) > RECEIVER_ERROR_RATE)
+        {
+            *direct = RECEIVER_STICK_DECREASING;
+            //*val = ulValue;
+        }
+        else 
+        {
+            *direct = RECEIVER_STICK_DECREASING;
+            *val = RECEIVER_PWM_MIN;
+        }
     }
 }
