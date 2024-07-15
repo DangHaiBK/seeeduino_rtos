@@ -21,6 +21,8 @@
 #define RECEIVER_STICK_DECREASING     2
 #define RECEIVER_STICK_LOSS_OR_FAIL   3
 
+#define RECEIVER_MAX_LENGTH_QUEUES    3
+
 #include <Arduino.h>
 
 /* Class */
