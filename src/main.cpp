@@ -161,38 +161,15 @@ void vGetInputRxChannel1(void *pvParameters)
 {
   (void) pvParameters;
   rxData sRxData;
-  for ( ;; )
-  {
-      for (uint8_t i=0; i<RECEIVER_MAX_LENGTH_QUEUES; i++)
-      {
-          rxReceiver.rx_read_pulse(0, &sRxData.direction, &sRxData.pwmVal);
-          xQueueSendToBack(xRxQueue[0], &sRxData, pdMS_TO_TICKS(100));
-      }
-    //   rxReceiver.rx_read_pulse(0, &sRxData.direction, &sRxData.pwmVal);
-    //   xQueueSendToBack(xRxQueue[0], &sRxData, pdMS_TO_TICKS(100));
-      vTaskDelay(pdMS_TO_TICKS(100));
-  }
-  
-}
-
-/*
-    * Get PWM data from channel 2
-    * Put 3 PWM consecutive data into a queue
-*/
-void vGetInputRxChannel2(void *pvParameters)
-{
-  (void) pvParameters;
-  rxData sRxData;
   rxDataArray sRxDataArray; 
   uint8_t index = 0;
 
   for ( ;; )
   {
-        
       for (uint8_t i=0; i<RECEIVER_MAX_LENGTH_QUEUES; i++)
       {
           /* Get 3 consecutive PWM values from receiver */
-          rxReceiver.rx_read_pulse(1, &sRxData.direction, &sRxData.pwmVal);
+          rxReceiver.rx_read_pulse(0, &sRxData.direction, &sRxData.pwmVal);
 
           /* Check if not fail-safe mode (255) -> append value into arrays */
           if (sRxData.pwmVal != 255)
@@ -219,9 +196,66 @@ void vGetInputRxChannel2(void *pvParameters)
       }
 
       /* Send queue data */
+      xQueueSendToBack(xRxQueue[0], &sRxData, pdMS_TO_TICKS(100));
+
+      /* Reset index value and count value */
+      index = 0;
+      sRxDataArray.rxCount = 0;
+
+      /* Delay 100ms before coming back to this task */
+      vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  
+}
+
+/*
+    * Get PWM data from channel 2
+    * Put 3 PWM consecutive data into a queue
+*/
+void vGetInputRxChannel2(void *pvParameters)
+{
+  (void) pvParameters;
+  rxData sRxData;
+  rxDataArray sRxDataArray; 
+  uint8_t index = 0;
+
+  for ( ;; )
+  {
+      for (uint8_t i=0; i<RECEIVER_MAX_LENGTH_QUEUES; i++)
+      {
+          /* Get 3 consecutive PWM values from receiver */
+          rxReceiver.rx_read_pulse(1, &sRxData.direction, &sRxData.pwmVal);
+
+          /* Check if not fail-safe mode (255) -> append value into arrays */
+          if (sRxData.pwmVal != 255)
+          {
+              sRxDataArray.rxCount++;
+              sRxDataArray.rxDirection[index++] = sRxData.direction;
+              sRxDataArray.rxPwmValue[index++] = sRxData.pwmVal;
+          }
+      }
+      
+      /* Check if we have 2/3 values that different to 255 */
+      if (sRxDataArray.rxCount >= 2) 
+      {
+          /* Assign the first values for queue data */
+          sRxData.direction = sRxDataArray.rxDirection[0];
+          sRxData.pwmVal = sRxDataArray.rxPwmValue[0];
+      }
+
+      /* If only one value # 255, it is possible to fall into fail-safe mode */
+      else 
+      {
+          sRxData.direction = RECEIVER_STICK_LOSS_OR_FAIL;
+          sRxData.pwmVal = RECEIVER_PWM_LOSS_OR_FAIL;
+      }
+
+      /* Send queue data */
       xQueueSendToBack(xRxQueue[1], &sRxData, pdMS_TO_TICKS(100));
-    //   rxReceiver.rx_read_pulse(1, &sRxData.direction, &sRxData.pwmVal);
-    //   xQueueSendToBack(xRxQueue[1], &sRxData, pdMS_TO_TICKS(100));
+
+      /* Reset index value and count value */
+      index = 0;
+      sRxDataArray.rxCount = 0;
 
       /* Delay 100ms before coming back to this task */
       vTaskDelay(pdMS_TO_TICKS(100));
@@ -237,15 +271,48 @@ void vGetInputRxChannel3(void *pvParameters)
 {
   (void) pvParameters;
   rxData sRxData;
+  rxDataArray sRxDataArray; 
+  uint8_t index = 0;
+
   for ( ;; )
   {
       for (uint8_t i=0; i<RECEIVER_MAX_LENGTH_QUEUES; i++)
       {
+          /* Get 3 consecutive PWM values from receiver */
           rxReceiver.rx_read_pulse(2, &sRxData.direction, &sRxData.pwmVal);
-          xQueueSendToBack(xRxQueue[2], &sRxData, pdMS_TO_TICKS(100));
+
+          /* Check if not fail-safe mode (255) -> append value into arrays */
+          if (sRxData.pwmVal != 255)
+          {
+              sRxDataArray.rxCount++;
+              sRxDataArray.rxDirection[index++] = sRxData.direction;
+              sRxDataArray.rxPwmValue[index++] = sRxData.pwmVal;
+          }
       }
-    //   rxReceiver.rx_read_pulse(2, &sRxData.direction, &sRxData.pwmVal);
-    //   xQueueSendToBack(xRxQueue[2], &sRxData, pdMS_TO_TICKS(100));
+      
+      /* Check if we have 2/3 values that different to 255 */
+      if (sRxDataArray.rxCount >= 2) 
+      {
+          /* Assign the first values for queue data */
+          sRxData.direction = sRxDataArray.rxDirection[0];
+          sRxData.pwmVal = sRxDataArray.rxPwmValue[0];
+      }
+      
+      /* If only one value # 255, it is possible to fall into fail-safe mode */
+      else 
+      {
+          sRxData.direction = RECEIVER_STICK_LOSS_OR_FAIL;
+          sRxData.pwmVal = RECEIVER_PWM_LOSS_OR_FAIL;
+      }
+
+      /* Send queue data */
+      xQueueSendToBack(xRxQueue[2], &sRxData, pdMS_TO_TICKS(100));
+
+      /* Reset index value and count value */
+      index = 0;
+      sRxDataArray.rxCount = 0;
+
+      /* Delay 100ms before coming back to this task */
       vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
@@ -263,9 +330,13 @@ void vControlSpeedMotor(void *pvParameters)
     uint16_t periodFailsafe = 0;
     for ( ;; )
     {
-
         if (xQueueReceive(xRxQueue[0], &sRxData, pdMS_TO_TICKS(100)) == pdPASS)
         {
+        #if (SERIAL_DEBUG == 1)
+            Serial.println("PWM value from Channel 2: ");
+            Serial.println(sRxData.pwmVal);
+            Serial.println(sRxData.direction);
+        #endif
             /* Loss signal */
             if (sRxData.direction == RECEIVER_STICK_LOSS_OR_FAIL)
             {
@@ -275,10 +346,6 @@ void vControlSpeedMotor(void *pvParameters)
                 rcLight.ReversedOff();
                 rcLight.BeaconSignal(periodFailsafe, LIGHT_PERIOD);
                 rcLight.HazardSignal(periodFailsafe, LIGHT_PERIOD);
-
-            // #if (SERIAL_DEBUG == 1)
-            //     Serial.println("Vehicle in failsafe mode");
-            // #endif
             }
 
             /* Forward */
