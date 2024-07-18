@@ -55,7 +55,7 @@ void RxReceiver::rx_remove_incoming_data_flag(uint8_t channel)
 unsigned long RxReceiver::rx_read_pwm(uint8_t channel)
 {
     //rx_remove_incoming_data_flag(channel);
-    rx_new_pulse[channel] = false;
+    //rx_new_pulse[channel] = false;
     return rx_channel_width[channel];
 }
 
@@ -64,44 +64,57 @@ unsigned long RxReceiver::rx_read_pwm(uint8_t channel)
 */
 void RxReceiver::rx_read_pulse(uint8_t channel, uint8_t *direct, uint16_t *val)
 {
-    unsigned long ulValue = rx_read_pwm(channel);
+   if (rx_new_pulse[channel] == true)
+   {
+       /* Turn off interrupt quickly to get data from each channel PWM receiver */
+       noInterrupts();
+      
+       /* Get PWM receiver value */ 
+       unsigned long ulValue = rx_read_pwm(channel);
 
-    /* Hold the value of the ulValue, determine the direction of the stick based on value PWM at the neutral position */
-    *val = ulValue;
-    if (ulValue > RECEIVER_PWM_NEUTRAL)
-    {
-        *direct = RECEIVER_STICK_INCREASING;
-    }
-    else if (ulValue < RECEIVER_PWM_NEUTRAL)
-    {
-        *direct = RECEIVER_STICK_DECREASING;
-    }
+       /* Hold the value of the ulValue, determine the direction of the stick based on value PWM at the neutral position */
+       *val = ulValue;
+       if (ulValue > RECEIVER_PWM_NEUTRAL)
+       {
+           *direct = RECEIVER_STICK_INCREASING;
+       }
+       else if (ulValue < RECEIVER_PWM_NEUTRAL)
+       {
+           *direct = RECEIVER_STICK_DECREASING;
+       }
+   
+       /* ulValue is out of range */
+       if ((ulValue - RECEIVER_PWM_MAX > RECEIVER_ERROR_RATE) || (RECEIVER_PWM_MIN - ulValue > RECEIVER_ERROR_RATE))
+       {
+           *direct = RECEIVER_STICK_LOSS_OR_FAIL;
+           *val = RECEIVER_PWM_LOSS_OR_FAIL;
+       }
+   
+       /* ulValue is in range of [2000 - Error_rate; 2000 + Error_rate] */
+       else if ((ulValue - RECEIVER_PWM_MAX <= RECEIVER_ERROR_RATE) && (ulValue - RECEIVER_PWM_MAX >= -RECEIVER_ERROR_RATE))
+       {
+           *direct = RECEIVER_STICK_INCREASING;
+           *val = RECEIVER_PWM_MAX;
+       }
+   
+       /* ulValue is in range of [1000 - Error_rate; 1000 + Error_rate] */
+       else if ((ulValue - RECEIVER_PWM_MIN <= RECEIVER_ERROR_RATE) && (ulValue - RECEIVER_PWM_MIN >= -RECEIVER_ERROR_RATE))
+       {
+           *direct = RECEIVER_STICK_DECREASING;
+           *val = RECEIVER_PWM_MIN;
+       }
+   
+       /* ulValue is in range of [1500 - Error_rate; 1500 + Error_rate] */
+       else if ((ulValue - RECEIVER_PWM_NEUTRAL <= RECEIVER_ERROR_RATE) && (ulValue - RECEIVER_PWM_NEUTRAL >= -RECEIVER_ERROR_RATE))
+       {
+           *direct = RECEIVER_STICK_MIDDLE;
+           *val = RECEIVER_PWM_NEUTRAL;
+       }
 
-    /* ulValue is out of range */
-    if ((ulValue - RECEIVER_PWM_MAX > RECEIVER_ERROR_RATE) || (RECEIVER_PWM_MIN - ulValue > RECEIVER_ERROR_RATE))
-    {
-        *direct = RECEIVER_STICK_LOSS_OR_FAIL;
-        *val = RECEIVER_PWM_LOSS_OR_FAIL;
-    }
+       /* Remove incoming data flag */
+       rx_new_pulse[channel] = false;
 
-    /* ulValue is in range of [2000 - Error_rate; 2000 + Error_rate] */
-    else if ((ulValue - RECEIVER_PWM_MAX <= RECEIVER_ERROR_RATE) && (ulValue - RECEIVER_PWM_MAX >= -RECEIVER_ERROR_RATE))
-    {
-        *direct = RECEIVER_STICK_INCREASING;
-        *val = RECEIVER_PWM_MAX;
-    }
-
-    /* ulValue is in range of [1000 - Error_rate; 1000 + Error_rate] */
-    else if ((ulValue - RECEIVER_PWM_MIN <= RECEIVER_ERROR_RATE) && (ulValue - RECEIVER_PWM_MIN >= -RECEIVER_ERROR_RATE))
-    {
-        *direct = RECEIVER_STICK_DECREASING;
-        *val = RECEIVER_PWM_MIN;
-    }
-
-    /* ulValue is in range of [1500 - Error_rate; 1500 + Error_rate] */
-    else if ((ulValue - RECEIVER_PWM_NEUTRAL <= RECEIVER_ERROR_RATE) && (ulValue - RECEIVER_PWM_NEUTRAL >= -RECEIVER_ERROR_RATE))
-    {
-        *direct = RECEIVER_STICK_MIDDLE;
-        *val = RECEIVER_PWM_NEUTRAL;
-    }
+       /* Turn on interrupt again to measure pulse width */
+       interrupts();
+   }
 }
