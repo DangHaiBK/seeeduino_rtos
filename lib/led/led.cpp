@@ -68,6 +68,18 @@ void Light::RightLightOff()
     digitalWrite(_rspin, LOW);
 }
 
+void Light::LightSignalOn()
+{
+    digitalWrite(_lspin, HIGH);
+    digitalWrite(_rspin, HIGH);
+}
+
+void Light::LightSignalOff()
+{
+    digitalWrite(_lspin, LOW);
+    digitalWrite(_rspin, LOW);
+}
+
 void Light::BeaconOff()
 {
     digitalWrite(_bcpin, LOW);

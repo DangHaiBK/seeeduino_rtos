@@ -16,12 +16,15 @@
 #define RECEIVER_FRESH_RATE           100     /* [MS] Frame rate, typical 10 - 300 Hz */
 #define RECEIVER_PWM_LOSS_OR_FAIL     255
 
+#define RECEIVER_PWM_FAIL_COUNT       10
+
 #define RECEIVER_STICK_MIDDLE         0
 #define RECEIVER_STICK_INCREASING     1
 #define RECEIVER_STICK_DECREASING     2
 #define RECEIVER_STICK_LOSS_OR_FAIL   3
 
-#define RECEIVER_MAX_LENGTH_QUEUES    3
+#define RECEIVER_MAX_LENGTH_QUEUES    20
+#define RECEIVER_NUM_CHANNEL          3
 
 #include <Arduino.h>
 
@@ -34,6 +37,7 @@ public:
     void rx_read_raw(uint8_t pin, uint8_t channel);
     /* Interrupt functions */
     unsigned long rx_read_pwm(uint8_t channel);
+    void rxProcessPwm(uint8_t pin, uint8_t channel, uint8_t *direct, uint16_t *val);
     void rx_read_pulse(uint8_t channel, uint8_t *direct, uint16_t *val);
 
     void measuring_CH1();
