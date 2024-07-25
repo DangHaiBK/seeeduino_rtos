@@ -32,7 +32,7 @@ Light rcLight(1, 2, 3, 4, 5, 6);
 MotorSpeed motorSpeed(1, 2);
 
 /* Create queues to store PWM values from each channel */
-QueueHandle_t xRxQueue[3];
+QueueHandle_t xRxQueue[RECEIVER_NUM_CHANNEL];
 
 QueueSetHandle_t xRxQueueSet;
 
@@ -91,13 +91,13 @@ void setup() {
     attachInterrupt(digitalPinToInterrupt(RX_INPUT_CHANNEL_3), measuring_CH3, CHANGE);
 
     /* Create queues */
-    for (uint8_t i=0; i<3; i++)
+    for (uint8_t i=0; i<RECEIVER_NUM_CHANNEL; i++)
     {
-        xRxQueue[i] = xQueueCreate(6, sizeof(uint32_t));
+        xRxQueue[i] = xQueueCreate(RECEIVER_MAX_LENGTH_QUEUES, sizeof(uint32_t));
     }
 
     /* Create a queue set to contain up to 2 queues */
-    xRxQueueSet = xQueueCreateSet(6 * 2);
+    xRxQueueSet = xQueueCreateSet(RECEIVER_MAX_LENGTH_QUEUES * 2);
 
     if (xRxQueueSet != NULL)
     {
