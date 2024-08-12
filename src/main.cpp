@@ -201,6 +201,7 @@ void vGetInputRxChannel1(void *pvParameters)
       if (zeroValCount >= RECEIVER_PWM_FAIL_COUNT)
       {
           lastPwmValue = RECEIVER_PWM_LOSS_OR_FAIL;
+          lastStateValue = RECEIVER_STICK_LOSS_OR_FAIL;
       }
 
       sRxDataSendQueue.pwmVal = lastPwmValue;
@@ -240,6 +241,7 @@ void vGetInputRxChannel2(void *pvParameters)
       if (zeroValCount >= RECEIVER_PWM_FAIL_COUNT)
       {
           lastPwmValue = RECEIVER_PWM_LOSS_OR_FAIL;
+          lastStateValue = RECEIVER_STICK_LOSS_OR_FAIL;
       }
 
       sRxDataSendQueue.pwmVal = lastPwmValue;
@@ -279,6 +281,7 @@ void vGetInputRxChannel3(void *pvParameters)
       if (zeroValCount >= RECEIVER_PWM_FAIL_COUNT)
       {
           lastPwmValue = RECEIVER_PWM_LOSS_OR_FAIL;
+          lastStateValue = RECEIVER_STICK_LOSS_OR_FAIL;
       }
 
       sRxDataSendQueue.pwmVal = lastPwmValue;
