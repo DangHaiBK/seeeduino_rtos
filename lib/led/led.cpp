@@ -42,6 +42,22 @@ void Light::ForwardOff()
     digitalWrite(_fpin, LOW);
 }
 
+/*
+    * Adjust led forward based on percentage 
+*/
+void Light::ForwardPWM(uint8_t percentage)
+{
+    if (percentage >= 100) {
+        digitalWrite(_fpin, HIGH);
+    }
+    else if (percentage <= 0) {
+        digitalWrite(_fpin, LOW);
+    }
+    else {
+        analogWrite(_fpin, (uint32_t)((percentage * 255) / 100));
+    }
+}
+
 /* 
     * Turn on led reversed
 */
@@ -58,14 +74,33 @@ void Light::ReversedOff()
     digitalWrite(_rpin, LOW);
 }
 
+/*
+    * Turn off led left
+*/
 void Light::LeftLightOff()
 {
     digitalWrite(_lspin, LOW);
 }
 
+/*
+    * Turn off led right
+*/
 void Light::RightLightOff()
 {
     digitalWrite(_rspin, LOW);
+}
+
+/*
+    * Toggle led left
+*/
+void Light::LeftLightToggle()
+{
+    digitalWrite(_lspin, !digitalRead(_lspin));
+}
+
+void Light::RightLightToggle()
+{
+    digitalWrite(_rspin, !digitalRead(_rspin));
 }
 
 void Light::LightSignalOn()
@@ -80,100 +115,59 @@ void Light::LightSignalOff()
     digitalWrite(_rspin, LOW);
 }
 
+/* 
+    * Turn off led beacon
+*/
 void Light::BeaconOff()
 {
     digitalWrite(_bcpin, LOW);
 }
 
-/* 
-    * Blink led signal left
-    * Params:
-    * - time_period: toggle led time
-*/
-void Light::LeftSignal(uint16_t time_period, uint16_t constant_time)
+void Light::BrakeOnPWM(uint8_t percentage)
 {
-    digitalWrite(_rspin, LOW);   // Turn off led right signal
-    if (time_period % constant_time == 0)  // Toggle led left and beacon left every 500 ms
-    {
-        /* Check the previous status of left led */
-        if (digitalRead(_lspin) == LOW) {
-            digitalWrite(_lspin, HIGH);
-        }
-        else {
-            digitalWrite(_lspin, LOW);
-        }
+    if (percentage >= 100) {
+        digitalWrite(_bpin, HIGH);
     }
-}
-
-/* 
-    * Blink led signal right
-    * Params:
-    * - time_period: toggle led time
-*/
-void Light::RightSignal(uint16_t time_period, uint16_t constant_time)
-{
-    digitalWrite(_lspin, LOW);   // Turn off led right signal
-    if (time_period % constant_time == 0)  // Toggle led left and beacon left every 500 ms
-    {
-        /* Check the previous status of left led */
-        if (digitalRead(_rspin) == LOW) {
-            digitalWrite(_rspin, HIGH);
-        }
-        else {
-            digitalWrite(_rspin, LOW);
-        }
-    }
-}
-
-/* 
-    * Active led brake
-    * Params:
-    * - time_period: toggle led time
-*/
-void Light::BrakeActive(uint16_t time_period, uint16_t constant_time)
-{
-    digitalWrite(_bpin, HIGH);      // On brake led when active
-    if (time_period % constant_time == 0)     // After 500ms, off this led
-    {
+    else if (percentage <= 0) {
         digitalWrite(_bpin, LOW);
     }
+    else {
+        analogWrite(_bpin, (uint32_t)((percentage * 255) / 100));
+    }
+}
+
+/*
+    * Turn on led brake
+*/
+void Light::BrakeOn()
+{
+    digitalWrite(_bpin, HIGH);
+}
+
+/*
+    * Turn off led brake
+*/
+void Light::BrakeOff()
+{
+    digitalWrite(_bpin, LOW);
 }
 
 /* 
     * Blink led beacon
-    * Params:
-    * - time_period: toggle led time
 */
-void Light::BeaconSignal(uint16_t time_period, uint16_t constant_time)
+void Light::BeaconSignal()
 {
-    /* Toggle led every 500ms */
-    if (time_period % constant_time == 0)
-    {
-        if (digitalRead(_bcpin) == LOW) {
-            digitalWrite(_bcpin, HIGH);
-        }
-        else {
-            digitalWrite(_bcpin, LOW);
-        }
-    }
+    digitalWrite(_bcpin, !digitalRead(_bcpin));
 }
 
-void Light::HazardSignal(uint16_t time_period, uint16_t constant_time)
+/*
+    * Toggle led hazard (two led signals)
+*/
+void Light::HazardSignal()
 {
-    if (time_period % constant_time == 0)
-    {
-        if (digitalRead(_lspin) == LOW) {
-            digitalWrite(_lspin, HIGH);
-        }
-        else {
-            digitalWrite(_lspin, LOW);
-        }
+    static uint8_t ledState = 0;
+    ledState = (ledState == HIGH) ? LOW : HIGH;
 
-        if (digitalRead(_rspin) == LOW) {
-            digitalWrite(_rspin, HIGH);
-        }
-        else {
-            digitalWrite(_rspin, LOW);
-        }
-    }
+    digitalWrite(_lspin, ledState);
+    digitalWrite(_rspin, ledState);
 }

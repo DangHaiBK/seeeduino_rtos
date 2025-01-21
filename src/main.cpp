@@ -1,12 +1,7 @@
 #include <Arduino.h>
 #include <FreeRTOS_SAMD21.h>
-#include "rx.h"
-#include "led.h"
-#include "motor.h"
-#include "main.h"
 
-#define LIGHT_PERIOD (LED_TOGGLE_PERIOD / RECEIVER_FRESH_RATE)
-#define LIGHT_PERIOD_EACH_CHANNEL (LED_TOGGLE_PERIOD_FAILSAFE / RECEIVER_FRESH_RATE)
+#include "main.h"
 
 /* Typedef struct for containing RX data package */
 struct rxData
@@ -14,13 +9,6 @@ struct rxData
   uint8_t direction;
   uint16_t pwmVal;
 };
-
-struct rxDataArray
-{
-    uint8_t rxCount;
-    uint8_t rxDirection[3];
-    uint16_t rxPwmValue[3];
-}; 
 
 /* Create an instance for class RX receiver */
 RxReceiver rxReceiver(RX_INPUT_CHANNEL_1, RX_INPUT_CHANNEL_2, RX_INPUT_CHANNEL_3);
@@ -34,9 +22,7 @@ MotorSpeed motorSpeed(1, 2);
 /* Create queues to store PWM values from each channel */
 QueueHandle_t xRxQueue[RECEIVER_NUM_CHANNEL];
 
-QueueSetHandle_t xRxQueueSet;
-
-SemaphoreHandle_t xMutex;
+SemaphoreHandle_t xMutexBrake;
 
 /* Functions for operation */
 void vStartupEffect();
@@ -45,8 +31,10 @@ void vStartupEffect();
 void vGetInputRxChannel1(void *pvParameters);
 void vGetInputRxChannel2(void *pvParameters);
 void vGetInputRxChannel3(void *pvParameters);
+void vNormalBrakeLights(void *pvParameters);
 void vControlSpeedMotor(void *pvParameters);
-void vControlAuxAndSignalLights(void *pvParameters);
+void vControlSteeringLights(void *pvParameters);
+void vControlAuxLights(void *pvParameters);
 
 /* 
     * Functions for interrupt signal from RX Receiver ---------------
@@ -74,7 +62,7 @@ void setup() {
 #endif
     
     /* Mapping pins for receiver */
-    rxReceiver.begin();
+    rxReceiver.begin(RX_COMPENSATE_ERROR_ENABLE);
 
     /* Mapping pins for leds */
     rcLight.begin();
@@ -96,17 +84,8 @@ void setup() {
         xRxQueue[i] = xQueueCreate(RECEIVER_MAX_LENGTH_QUEUES, sizeof(uint32_t));
     }
 
-    /* Create a queue set to contain up to 2 queues */
-    xRxQueueSet = xQueueCreateSet(RECEIVER_MAX_LENGTH_QUEUES * 2);
-
-    if (xRxQueueSet != NULL)
-    {
-        xQueueAddToSet(xRxQueue[1], xRxQueueSet);
-        xQueueAddToSet(xRxQueue[2], xRxQueueSet);
-    }
-
-    /* Create a mutex */
-    xMutex = xSemaphoreCreateMutex();
+    /* Create binary semaphores */
+    xMutexBrake = xSemaphoreCreateBinary();
 
     /* Create tasks */
     xTaskCreate(vGetInputRxChannel1, 
@@ -114,35 +93,60 @@ void setup() {
                 128,
                 NULL,
                 tskIDLE_PRIORITY + 1,
-                NULL);
+                NULL
+    );
     
     xTaskCreate(vGetInputRxChannel2, 
                 "Channel 2", 
                 128,
                 NULL,
                 tskIDLE_PRIORITY + 1,
-                NULL);
+                NULL
+    );
 
     xTaskCreate(vGetInputRxChannel3, 
                 "Channel 3", 
                 128,
                 NULL,
                 tskIDLE_PRIORITY + 1,
-                NULL);
+                NULL
+    );
+    
+    xTaskCreate(vNormalBrakeLights,
+                "Normal light",
+                128,
+                NULL,
+                tskIDLE_PRIORITY + 1,
+                NULL
+
+    );
 
     xTaskCreate(vControlSpeedMotor,
                 "Control Motor",
                 128,
                 NULL,
                 tskIDLE_PRIORITY + 1,
-                NULL);
+                NULL
+    );
 
-    xTaskCreate(vControlAuxAndSignalLights,
+    xTaskCreate(vControlSteeringLights,
+                "Control Steering",
+                128,
+                NULL,
+                tskIDLE_PRIORITY + 1,
+                NULL
+    );
+
+    xTaskCreate(vControlAuxLights,
                 "Control Lights",
                 128,
                 NULL,
                 tskIDLE_PRIORITY + 1,
-                NULL);
+                NULL
+    );
+
+    /* Give the semaphore at beginning */
+    xSemaphoreGive(xMutexBrake);
 
     /* Start scheduling */
     vTaskStartScheduler();
@@ -158,9 +162,13 @@ void loop() {
 */
 void vStartupEffect()
 {
-    rcLight.LightSignalOn();
-    delay(2000);
-    rcLight.LightSignalOff();
+    for (uint8_t i=0; i<2; i++)
+    {
+        rcLight.LightSignalOn();
+        delay(500);
+        rcLight.LightSignalOff();
+        delay(500);
+    }
     delay(1000);
 }
 
@@ -206,10 +214,10 @@ void vGetInputRxChannel1(void *pvParameters)
 
       sRxDataSendQueue.pwmVal = lastPwmValue;
       sRxDataSendQueue.direction = lastStateValue;
-      xQueueSendToBack(xRxQueue[RX_CHANNEL_1], &sRxDataSendQueue, pdMS_TO_TICKS(100));
+      xQueueSendToBack(xRxQueue[RX_CHANNEL_1], &sRxDataSendQueue, pdMS_TO_TICKS(DELAY_RX_TASK));
 
-      /* Delay 100ms before coming back to this task */
-      vTaskDelay(pdMS_TO_TICKS(100));
+      /* Delay before coming back to this task */
+      vTaskDelay(pdMS_TO_TICKS(DELAY_RX_TASK));
   }
 }
 
@@ -246,10 +254,10 @@ void vGetInputRxChannel2(void *pvParameters)
 
       sRxDataSendQueue.pwmVal = lastPwmValue;
       sRxDataSendQueue.direction = lastStateValue;
-      xQueueSendToBack(xRxQueue[RX_CHANNEL_2], &sRxDataSendQueue, pdMS_TO_TICKS(100));
+      xQueueSendToBack(xRxQueue[RX_CHANNEL_2], &sRxDataSendQueue, pdMS_TO_TICKS(DELAY_RX_TASK));
 
-      /* Delay 100ms before coming back to this task */
-      vTaskDelay(pdMS_TO_TICKS(100));
+      /* Delay before coming back to this task */
+      vTaskDelay(pdMS_TO_TICKS(DELAY_RX_TASK));
   }
 }
 
@@ -286,11 +294,25 @@ void vGetInputRxChannel3(void *pvParameters)
 
       sRxDataSendQueue.pwmVal = lastPwmValue;
       sRxDataSendQueue.direction = lastStateValue;
-      xQueueSendToBack(xRxQueue[RX_CHANNEL_3], &sRxDataSendQueue, pdMS_TO_TICKS(100));
+      xQueueSendToBack(xRxQueue[RX_CHANNEL_3], &sRxDataSendQueue, pdMS_TO_TICKS(DELAY_RX_TASK));
 
-      /* Delay 100ms before coming back to this task */
-      vTaskDelay(pdMS_TO_TICKS(100));
+      /* Delay before coming back to this task */
+      vTaskDelay(pdMS_TO_TICKS(DELAY_RX_TASK));
   }
+}
+
+/* 
+    * This function controls brake light in normal mode
+*/
+void vNormalBrakeLights(void *pvParameters)
+{
+    (void) pvParameters;
+    if (xSemaphoreTake(xMutexBrake, pdMS_TO_TICKS(DELAY_MAIN_TASK)) == pdTRUE)
+    {
+        rcLight.BrakeOnPWM(60);
+        xSemaphoreGive(xMutexBrake);
+    }
+    vTaskDelay(pdMS_TO_TICKS(DELAY_MAIN_TASK));
 }
 
 /* 
@@ -301,45 +323,41 @@ void vControlSpeedMotor(void *pvParameters)
 {
     (void) pvParameters;
     rxData sRxData;
-    uint16_t convertVal;
-    uint16_t period = 0; 
-    uint16_t periodFailsafe = 0;
+    bool brake_status = true;
+    uint16_t convertVal = 0;
+    uint8_t period = 0;
     uint16_t pwmVal = 0;
     for ( ;; )
     {
-        if (xQueueReceive(xRxQueue[0], &sRxData, pdMS_TO_TICKS(100)) == pdPASS)
+        if (xQueueReceive(xRxQueue[RX_CHANNEL_1], &sRxData, pdMS_TO_TICKS(DELAY_MAIN_TASK)) == pdPASS)
         {
         #if (SERIAL_DEBUG == 1)
             //Serial.println("PWM value from Channel 2: ");
-            //Serial.println(sRxData.pwmVal);
-            period = sRxData.direction;
-            //Serial.println(sRxData.direction);
+            //period = sRxData.direction;
         #endif
             pwmVal = sRxData.pwmVal;     // Get data into a queue
             switch (sRxData.direction)
             {
             /* Loss or failed signal */
             case RECEIVER_STICK_LOSS_OR_FAIL:
+                period = 0;
+                brake_status = false;
+
+                rcLight.BrakeOff();
                 motorSpeed.SetStop();
-                periodFailsafe ++;
-                rcLight.ForwardOff();
-                rcLight.ReversedOff();
-                rcLight.BeaconSignal(periodFailsafe, LIGHT_PERIOD);
-                rcLight.HazardSignal(periodFailsafe, LIGHT_PERIOD);
                 break;
 
             /* Forward */
             case RECEIVER_STICK_INCREASING:
                 period = 0;
-                periodFailsafe = 0;
-                rcLight.ForwardOn();
-                rcLight.ReversedOff();
-                if (pwmVal >= RECEIVER_PWM_MAX)
-                {
+                brake_status = false;
+
+                rcLight.BrakeOff();
+
+                if (pwmVal >= RECEIVER_PWM_MAX) {
                     motorSpeed.SetFullForward();
                 }
-                else 
-                {
+                else {
                     convertVal = map(pwmVal, RECEIVER_PWM_NEUTRAL, RECEIVER_PWM_MAX, \
                                         MINIMUM_MOTOR_SPEED, MAXIMUM_MOTOR_SPEED_FORWARD);
                     motorSpeed.SetPwmForward(convertVal);
@@ -349,15 +367,14 @@ void vControlSpeedMotor(void *pvParameters)
             /* Reversed */
             case RECEIVER_STICK_DECREASING:
                 period = 0;
-                periodFailsafe = 0;
-                rcLight.ReversedOn();
-                rcLight.ForwardOff();
-                if (pwmVal <= RECEIVER_PWM_MIN)
-                {
+                brake_status = false;
+
+                rcLight.BrakeOff();
+
+                if (pwmVal <= RECEIVER_PWM_MIN) {
                     motorSpeed.SetFullReversed();
                 }
-                else 
-                {
+                else {
                     convertVal = map(pwmVal, RECEIVER_PWM_MIN, RECEIVER_PWM_NEUTRAL, \
                                         MINIMUM_MOTOR_SPEED, MAXIMUM_MOTOR_SPEED_REVERSED);
                     motorSpeed.SetPwmReversed(convertVal);
@@ -366,18 +383,19 @@ void vControlSpeedMotor(void *pvParameters)
             
             /* Parking */
             default:
-                periodFailsafe = 0; 
                 motorSpeed.SetStop();
-                rcLight.ForwardOff();
-                rcLight.ReversedOff();
-                period++;
-                if (period <= 5)
-                { 
-                    rcLight.BrakeActive(period, LIGHT_PERIOD);
-                }
-                else 
-                {
-                    period = 6;     // Avoid to increment counter (overflow and reset to 0)
+                
+                if (brake_status == false) {
+                    if (xSemaphoreTake(xMutexBrake, pdMS_TO_TICKS(DELAY_MAIN_TASK)) == pdTRUE) {
+                        period ++;
+                        rcLight.BrakeOnPWM(100);
+
+                        if (period > LIGHT_BRAKE_PERIOD) {
+                            brake_status = true;
+                            rcLight.BrakeOnPWM(0);
+                            xSemaphoreGive(xMutexBrake);
+                        }
+                    }
                 }
                 break;
             }
@@ -385,186 +403,133 @@ void vControlSpeedMotor(void *pvParameters)
     }
 }
 
-/*
-    * This function is ultilized to control Light system in the vehicle 
-    * Use Channel 4 and Channel 5 (TX MC6C) as Steering channel and Aux channel, respectively
-    * Steering channel for signal lights and Aux channel for hazard and beacon lights
+/* 
+    * This function receives data from channel 4 (TX MC6C) to control signal lights
+    * with controlling led signal left and right
 */
-void vControlAuxAndSignalLights(void *pvParameters)
+void vControlSteeringLights(void *pvParameters)
 {
     (void) pvParameters;
     rxData sRxData;
     uint8_t periodFailsafe = 0;
-    uint8_t periodOneDirection = 0;
-    uint8_t periodOtherDirection = 0;
-    uint8_t modeFromQueue1 = 0;
-    uint8_t modeFromQueue2 = 0;
-    uint16_t pwmVal = 0;
-    QueueHandle_t xQueueContainData;
-    
-    for ( ;; )
+    uint8_t timeCount = 0;
+
+    for (;;)
     {
-        xQueueContainData = (QueueHandle_t) xQueueSelectFromSet(xRxQueueSet, pdMS_TO_TICKS(200));
-
-        if (xQueueContainData == xRxQueue[1])
+        if (xQueueReceive(xRxQueue[RX_CHANNEL_2], &sRxData, pdMS_TO_TICKS(DELAY_MAIN_TASK)) == pdPASS)
         {
-            if (xQueueReceive(xRxQueue[1], &sRxData, 0) == pdPASS)
+            switch (sRxData.direction)
             {
-                modeFromQueue1 = sRxData.direction;
-                pwmVal = sRxData.pwmVal;
+            case RECEIVER_STICK_LOSS_OR_FAIL:
+                periodFailsafe ++;
+                
+                if (periodFailsafe % LIGHT_PERIOD_FAILSAFE == 0) {
+                    rcLight.HazardSignal();
+                }
+                break;
+
+            case RECEIVER_STICK_INCREASING:
+                periodFailsafe = 0;
+                timeCount ++;
+
+                if (timeCount >= TIME_THRES_STEERING) {
+                    if (timeCount % LIGHT_PERIOD == 0) {
+                        rcLight.LeftLightToggle();
+                    }
+                }
+                break;
+            
+            case RECEIVER_STICK_DECREASING:
+                periodFailsafe = 0;
+                timeCount ++;
+
+                if (timeCount > TIME_THRES_STEERING) {
+                    if (timeCount % LIGHT_PERIOD == 0) {
+                        rcLight.RightLightToggle();
+                    }
+                }
+                break;
+            
+            default:                    // Neutral position
+                periodFailsafe = 0;
+                timeCount = 0;
+
+                rcLight.LightSignalOff();
+                break;
             }
         }
-        else if (xQueueContainData == xRxQueue[2])
+    }
+
+}
+
+/* 
+    * This function receives data from channel 5 (or 6) (TX MC6C) to control aux lights
+    * with controlling aux lights
+*/
+void vControlAuxLights(void *pvParameters)
+{
+    (void) pvParameters;
+    rxData sRxData;
+    uint8_t periodFailSafe = 0;
+    uint8_t periodDown = 0;
+    uint8_t lastState = 0;
+    uint8_t count = 0;
+
+    for (;;)
+    {
+        if (xQueueReceive(xRxQueue[RX_CHANNEL_3], &sRxData, pdMS_TO_TICKS(DELAY_MAIN_TASK)) == pdPASS)
         {
-            if (xQueueReceive(xRxQueue[2], &sRxData, 0) == pdPASS)
+            switch (sRxData.direction)
             {
-                modeFromQueue2 = sRxData.direction;
-                pwmVal = sRxData.pwmVal;
-            }
-        }
+            case RECEIVER_STICK_LOSS_OR_FAIL:
+                periodFailSafe ++;
 
-        #if (SERIAL_DEBUG == 1)
-        Serial.println((modeFromQueue1 + modeFromQueue2));
-        #endif
+                if (periodFailSafe % LIGHT_PERIOD_FAILSAFE == 0) {
+                    rcLight.BeaconSignal();
+                }
 
-        /* Both channels fall in failsafe mode, toggle led in 100 millis */
-        if ((modeFromQueue1 + modeFromQueue2) == 6)
-        {
-            periodFailsafe ++;
-            periodOneDirection = 0;
-            periodOtherDirection = 0;
-            rcLight.HazardSignal(periodFailsafe, LIGHT_PERIOD_EACH_CHANNEL);
-            rcLight.BeaconSignal(periodFailsafe, LIGHT_PERIOD_EACH_CHANNEL);
-        }
-        else 
-        {
-            periodFailsafe = 0;
+                lastState = RECEIVER_STICK_LOSS_OR_FAIL;
+                break;
+            
+            case RECEIVER_STICK_INCREASING:
+                periodFailSafe = 0;
 
-            /* Total direction = 5 */
-            if ((modeFromQueue1 + modeFromQueue2) == 5)
-            {
-                if ((modeFromQueue1 == 3) && (modeFromQueue2 == 2))   // Failsafe on steering CH, decrease AUX CH
-                {
-                    periodOneDirection = 0;
-                    periodOtherDirection ++;
-                    rcLight.BeaconSignal(periodOtherDirection, LIGHT_PERIOD_EACH_CHANNEL);
-                    rcLight.LeftLightOff();
-                    rcLight.RightLightOff();
-                }
-                if ((modeFromQueue1 == 2) && (modeFromQueue2 == 3))   // Failsafe on AUX CH, decrease on steering CH
-                {
-                    periodOneDirection ++;
-                    periodOtherDirection = 0;
-                    rcLight.BeaconSignal(periodOneDirection, LIGHT_PERIOD_EACH_CHANNEL);
-                    rcLight.RightSignal(periodOneDirection, LIGHT_PERIOD);
-                }
-            }
+                rcLight.ForwardPWM(100);
 
-            /* Total direction = 4 */
-            if ((modeFromQueue1 + modeFromQueue2) == 4)
-            {
-                if ((modeFromQueue1 == 3) && (modeFromQueue2 == 1))   // Failsafe on steering CH, increase AUX CH
-                {
-                    periodOneDirection ++;
-                    rcLight.HazardSignal(periodOneDirection, LIGHT_PERIOD_EACH_CHANNEL);
-                }
-                if ((modeFromQueue1 == 1) && (modeFromQueue2 == 3))   // Failsafe on AUX CH, increasing steering CH
-                {
-                    periodOneDirection ++;
-                    periodOtherDirection ++;
-                    rcLight.BeaconSignal(periodOtherDirection, LIGHT_PERIOD_EACH_CHANNEL);
-                    rcLight.LeftSignal(periodOneDirection, LIGHT_PERIOD);
-                }
-                if ((modeFromQueue1 == 2) && (modeFromQueue2 == 2))   // Both channels decrease
-                {
-                    periodOneDirection ++;
-                    periodOtherDirection ++;
-                    rcLight.RightSignal(periodOneDirection, LIGHT_PERIOD);
-                    rcLight.BeaconSignal(periodOtherDirection, LIGHT_PERIOD);
-                }
-            }
+                lastState = RECEIVER_STICK_INCREASING;
+                break;
+            
+            case RECEIVER_STICK_DECREASING:
+                periodFailSafe = 0;
 
-            /* Total direction = 3 */
-            if ((modeFromQueue1 + modeFromQueue2) == 3)
-            {
-                /* Failsafe on either channel */
-                if ((modeFromQueue1 == 3) && (modeFromQueue2 == 0))   // Steering channel
-                {
-                    periodOneDirection ++;
-                    rcLight.HazardSignal(periodOneDirection, LIGHT_PERIOD_EACH_CHANNEL);
+                if (lastState == RECEIVER_STICK_MIDDLE) {
+                    count ++;
                 }
-                if ((modeFromQueue1 == 0) && (modeFromQueue2 == 3))   // AUX channel
-                {
-                    periodOtherDirection ++;
-                    rcLight.BeaconSignal(periodOtherDirection, LIGHT_PERIOD_EACH_CHANNEL);
+                if (count != 0) {  
+                    if (count % 2 == 0) {
+                        periodDown ++;
+                        if (periodDown % LIGHT_PERIOD == 0) {
+                            rcLight.BeaconSignal();
+                        }
+                    }
+                    else {
+                        rcLight.BeaconOff();
+                    }
                 }
-                if ((modeFromQueue1 == 1) && (modeFromQueue2 == 2))   // Increase steering CH, decrease AUX CH
-                {
-                    periodOneDirection ++;
-                    periodOtherDirection ++;
-                    rcLight.LeftSignal(periodOneDirection, LIGHT_PERIOD);
-                    rcLight.BeaconSignal(periodOtherDirection, LIGHT_PERIOD);
-                }
-                if ((modeFromQueue1 == 2) && (modeFromQueue2 == 1))   // Decrease steering CH, increase AUX CH
-                {
-                    periodOneDirection ++;
-                    periodOtherDirection ++;
-                    rcLight.RightSignal(periodOneDirection, LIGHT_PERIOD);
-                }
-            }
 
-            /* Total direction = 2 */
-            if ((modeFromQueue1 + modeFromQueue2) == 2)
-            {
-                if ((modeFromQueue1 == 0) && (modeFromQueue2 == 2))   // Steering CH middle, AUX CH decrease
-                {
-                    periodOneDirection = 0;
-                    periodOtherDirection ++;
-                    rcLight.LeftLightOff();
-                    rcLight.RightLightOff();
-                    rcLight.BeaconSignal(periodOtherDirection, LIGHT_PERIOD);
-                }
-                if ((modeFromQueue1 == 2) && (modeFromQueue2 == 0))   // Steering CH decrease, AUX CH middle
-                {
-                    periodOneDirection ++;
-                    periodOtherDirection = 0;
-                    rcLight.RightSignal(periodOneDirection, LIGHT_PERIOD);
+                lastState = RECEIVER_STICK_DECREASING;
+                break;
+            
+            default:            // Middle position
+                periodFailSafe = 0;
+
+                if (lastState == RECEIVER_STICK_LOSS_OR_FAIL) {
                     rcLight.BeaconOff();
                 }
-                if ((modeFromQueue1 == 1) && (modeFromQueue2 == 1))   // Steering CH increase, AUX CH increase
-                {
-                    periodOneDirection ++;
-                    rcLight.LeftSignal(periodOneDirection, LIGHT_PERIOD);
-                }
-            }
+                rcLight.ForwardPWM(60);
 
-            /* Total direction = 1 */
-            if ((modeFromQueue1 + modeFromQueue2) == 1)
-            {
-                if ((modeFromQueue1 == 0) && (modeFromQueue2 == 1))   // Steering CH middle, AUX CH increase
-                {
-                    periodOneDirection = 0;
-                    periodOtherDirection ++;
-                    rcLight.HazardSignal(periodOtherDirection, LIGHT_PERIOD);
-                }
-                if ((modeFromQueue1 == 1) && (modeFromQueue2 == 0))   //Steering CH increase, AUX CH middle
-                {
-                    periodOtherDirection = 0;
-                    periodOneDirection ++;
-                    rcLight.LeftSignal(periodOneDirection, LIGHT_PERIOD);
-                    rcLight.BeaconOff();
-                }
-            }
-
-            /* Total direction = 0 -> Both channels in middle*/
-            if ((modeFromQueue1 + modeFromQueue2) == 0) 
-            {
-                periodOneDirection = 0;
-                periodOtherDirection = 0;
-
-                rcLight.BeaconOff();
-                rcLight.LeftLightOff();
-                rcLight.RightLightOff();
+                lastState = RECEIVER_STICK_MIDDLE;
+                break;
             }
         }
     }

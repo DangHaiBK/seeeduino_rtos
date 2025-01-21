@@ -1,8 +1,8 @@
 #ifndef LED_H
 #define LED_H
 
-#define LED_TOGGLE_PERIOD            500
-#define LED_TOGGLE_PERIOD_FAILSAFE   1000
+#define LED_TOGGLE_PERIOD            1000   // ms
+#define LED_TOGGLE_PERIOD_FAILSAFE   300    // ms
 
 #include <Arduino.h>
 
@@ -15,24 +15,28 @@ public:
     void ForwardOn();
     void ForwardOff();
 
+    void ForwardPWM(uint8_t percentage);
+
     void ReversedOn();
     void ReversedOff();
 
     void LeftLightOff();
     void RightLightOff();
 
+    void LeftLightToggle();
+    void RightLightToggle();
+
     void LightSignalOn();
     void LightSignalOff();
 
     void BeaconOff();
 
-    void BrakeActive(uint16_t time_period, uint16_t constant_time);
+    void BrakeOnPWM(uint8_t percentage);
+    void BrakeOn();
+    void BrakeOff();
 
-    void LeftSignal(uint16_t time_period, uint16_t constant_time);
-    void RightSignal(uint16_t time_period, uint16_t constant_time);
-
-    void BeaconSignal(uint16_t time_period, uint16_t constant_time);
-    void HazardSignal(uint16_t time_period, uint16_t constant_time);
+    void BeaconSignal();
+    void HazardSignal();
 private:
     int _fpin;
     int _rpin;
