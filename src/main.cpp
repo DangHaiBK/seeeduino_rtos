@@ -483,7 +483,8 @@ void vControlAuxLights(void *pvParameters)
             {
             case RECEIVER_STICK_LOSS_OR_FAIL:
                 periodFailSafe ++;
-
+                periodDown = 0;
+                count = 0;
                 if (periodFailSafe % LIGHT_PERIOD_FAILSAFE == 0) {
                     rcLight.BeaconSignal();
                 }
@@ -493,7 +494,7 @@ void vControlAuxLights(void *pvParameters)
             
             case RECEIVER_STICK_INCREASING:
                 periodFailSafe = 0;
-
+                periodDown = 0;
                 rcLight.ForwardPWM(100);
 
                 lastState = RECEIVER_STICK_INCREASING;
@@ -522,7 +523,7 @@ void vControlAuxLights(void *pvParameters)
             
             default:            // Middle position
                 periodFailSafe = 0;
-
+                periodDown = 0;
                 if (lastState == RECEIVER_STICK_LOSS_OR_FAIL) {
                     rcLight.BeaconOff();
                 }
