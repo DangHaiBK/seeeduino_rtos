@@ -312,7 +312,7 @@ void vNormalBrakeLights(void *pvParameters)
         rcLight.BrakeOnPWM(60);
         xSemaphoreGive(xMutexBrake);
     }
-    vTaskDelay(pdMS_TO_TICKS(DELAY_MAIN_TASK));
+    vTaskDelay(pdMS_TO_TICKS(DELAY_RX_TASK));
 }
 
 /* 
